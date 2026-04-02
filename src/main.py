@@ -20,8 +20,14 @@ def main():
     model, tokenizer = trainer.get_model_tokenizer()
     inference = InferenceEngine(model, tokenizer, config.device)
 
-    query = "How many heads of the departments are older than 56 ?"
-    result = inference.generate_sql(query)
+    # Example schema (replace with real schema in production)
+    schema = """
+    department(id, name, head_id, head_age)
+    """
+
+    query = "How many heads of the departments are older than 56?"
+
+    result = inference.generate_sql(query, schema)
 
     print("\nGenerated SQL:\n", result)
 

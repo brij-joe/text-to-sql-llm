@@ -1,16 +1,39 @@
 import torch
 
 
+def clean_sql_output(text: str) -> str:
+    text = text.strip()
+
+    for prefix in ["SQL:", "### SQL", "Answer:", "Output:"]:
+        if prefix in text:
+            text = text.split(prefix, 1)[-1].strip()
+
+    if ";" in text:
+        text = text.split(";")[0] + ";"
+
+    return text.strip()
+
+
 class InferenceEngine:
     def __init__(self, model, tokenizer, device: str):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
 
-    def generate_sql(self, query: str, max_new_tokens: int = 100) -> str:
+    def generate_sql(self, query: str, schema: str, max_new_tokens: int = 120) -> str:
         self.model.eval()
 
-        prompt = f"Question: {query}\nSQL:"
+        prompt = (
+            f"### Task\n"
+            f"Convert natural language to SQL.\n\n"
+            f"### Schema\n{schema}\n\n"
+            f"### Question\n{query}\n\n"
+            f"### Instructions\n"
+            f"- Output ONLY SQL\n"
+            f"- No explanation\n"
+            f"- No comments\n\n"
+            f"### SQL\n"
+        )
 
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
@@ -24,11 +47,12 @@ class InferenceEngine:
                 early_stopping=True,
                 pad_token_id=self.tokenizer.eos_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
             )
 
-        result = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        input_length = inputs["input_ids"].shape[1]
+        generated_tokens = outputs[0][input_length:]
 
-        # if "SQL:" in result:
-            # result = result.split("SQL:")[-1].strip()
+        decoded = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
-        return result
+        return clean_sql_output(decoded)

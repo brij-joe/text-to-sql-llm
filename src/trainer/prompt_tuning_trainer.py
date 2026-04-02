@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import torch
 from typing import Optional, Tuple
 from torch.utils.data import DataLoader
@@ -26,6 +29,7 @@ class PromptTuningTrainer:
         self.device = config.device
 
         self.model, self.tokenizer = self._load_model()
+        self.schema_map = self._load_schema()
         self.train_loader = self._load_data()
 
         self._initialized = True
@@ -53,18 +57,68 @@ class PromptTuningTrainer:
 
         model = get_peft_model(base_model, peft_config).to(self.device)
 
-        print("Skipping torch.compile on Windows for stability")
-
+        print("Skipping torch.compile for stability")
         model.print_trainable_parameters()
+
         return model, tokenizer
 
     # =========================
-    # DATA (FIXED)
+    # LOAD SCHEMA
     # =========================
-    def _preprocess(self, example: dict) -> dict:
-        prompt = f"Question: {example['question']}\nSQL:"
-        target = f" {example['query']}"
+    def _load_schema(self):
+        # Get project root (2 levels up from this file)
+        root_dir = Path(__file__).resolve().parents[2]
+        schema_path = root_dir / "schema" / "tables.json"
 
+        if not schema_path.exists():
+            raise FileNotFoundError(f"Schema file not found at: {schema_path}")
+
+        with open(schema_path, "r", encoding="utf-8") as f:
+            tables = json.load(f)
+
+        schema_map = {
+            db["db_id"]: {
+                "table_names_original": db["table_names_original"],
+                "column_names_original": db["column_names_original"],
+            }
+            for db in tables
+        }
+
+        return schema_map
+
+    def _format_schema(self, db_id: str) -> str:
+        schema = self.schema_map[db_id]
+
+        tables = schema["table_names_original"]
+        columns = schema["column_names_original"]
+
+        schema_dict = {table: [] for table in tables}
+
+        for table_id, column_name in columns:
+            if table_id == -1:
+                continue
+            table = tables[table_id]
+            schema_dict[table].append(column_name)
+
+        return "\n".join(
+            f"{table}({', '.join(cols)})"
+            for table, cols in schema_dict.items()
+        )
+
+    # =========================
+    # PREPROCESS
+    # =========================
+    def _preprocess(self, example):
+        schema = self._format_schema(example["db_id"])
+
+        prompt = (
+            f"Schema:\n{schema}\n\n"
+            f"Question: {example['question']}\n"
+            f"Return ONLY SQL query. No explanation.\n"
+            f"SQL:"
+        )
+
+        target = f" {example['query']}"
         full_text = prompt + target
 
         tokenized = self.tokenizer(
@@ -76,17 +130,26 @@ class PromptTuningTrainer:
 
         labels = tokenized["input_ids"].copy()
 
-        prompt_len = len(self.tokenizer(prompt)["input_ids"])
+        prompt_tokens = self.tokenizer(
+            prompt,
+            truncation=True,
+            max_length=self.config.max_length,
+            padding="max_length",
+        )
+        prompt_len = sum(prompt_tokens["attention_mask"])
+
         labels[:prompt_len] = [-100] * prompt_len
 
         tokenized["labels"] = labels
         return tokenized
 
-    def _load_data(self) -> DataLoader:
-        dataset = load_dataset("spider")["train"].select(range(2000))
+    # =========================
+    # DATA
+    # =========================
+    def _load_data(self):
+        dataset = load_dataset("spider")["train"].select(range(4000))
 
         dataset = dataset.map(self._preprocess)
-
         # print test data
         for i in range(5):
             print(f"\n===== Sample {i + 1} =====")
