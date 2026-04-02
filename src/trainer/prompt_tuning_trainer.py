@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-
 import torch
 from typing import Optional, Tuple
 from torch.utils.data import DataLoader
@@ -43,9 +42,7 @@ class PromptTuningTrainer:
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
-        base_model = AutoModelForCausalLM.from_pretrained(
-            self.config.model_name
-        ).to(self.device)
+        base_model = AutoModelForCausalLM.from_pretrained(self.config.model_name).to(self.device)
 
         peft_config = PromptTuningConfig(
             task_type=TaskType.CAUSAL_LM,
@@ -56,6 +53,9 @@ class PromptTuningTrainer:
         )
 
         model = get_peft_model(base_model, peft_config).to(self.device)
+
+        # IMPORTANT: Disable cache during training (saves memory)
+        model.config.use_cache = False
 
         print("Skipping torch.compile for stability")
         model.print_trainable_parameters()
@@ -97,8 +97,7 @@ class PromptTuningTrainer:
         for table_id, column_name in columns:
             if table_id == -1:
                 continue
-            table = tables[table_id]
-            schema_dict[table].append(column_name)
+            schema_dict[tables[table_id]].append(column_name)
 
         return "\n".join(
             f"{table}({', '.join(cols)})"
@@ -141,17 +140,19 @@ class PromptTuningTrainer:
         labels[:prompt_len] = [-100] * prompt_len
 
         tokenized["labels"] = labels
+
         return tokenized
 
     # =========================
     # DATA
     # =========================
     def _load_data(self):
-        dataset = load_dataset("spider")["train"].select(range(4000))
+        dataset = load_dataset("spider")["train"].select(range(self.config.num_samples))
 
-        dataset = dataset.map(self._preprocess)
-        # print test data
-        for i in range(5):
+        dataset = dataset.map(self._preprocess, batched=False)
+
+        # Debug samples (safe)
+        for i in range(min(5, len(dataset))):
             print(f"\n===== Sample {i + 1} =====")
             print(dataset[i])
 
@@ -185,6 +186,7 @@ class PromptTuningTrainer:
 
         for epoch in range(self.config.epochs):
             total_loss = 0.0
+            # optimizer.zero_grad()
 
             for step, batch in enumerate(self.train_loader):
                 batch = {k: v.to(self.device) for k, v in batch.items()}
@@ -202,8 +204,20 @@ class PromptTuningTrainer:
 
                 total_loss += loss.item()
 
+            # handle leftover gradients
+            # scaler.step(optimizer)
+            # scaler.update()
+            # optimizer.zero_grad()
+
             avg_loss = total_loss / len(self.train_loader)
             print(f"[Epoch {epoch + 1}] Loss: {avg_loss:.4f}")
 
     def get_model_tokenizer(self):
         return self.model, self.tokenizer
+
+    def save_model(self):
+        """
+        Saves PEFT adapter + tokenizer
+        """
+        self.model.save_pretrained(self.config.adapter_path)
+        self.tokenizer.save_pretrained(self.config.adapter_path)
