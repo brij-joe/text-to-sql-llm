@@ -12,7 +12,7 @@
     {
       "entropy": 0.680767610669136,
       "epoch": 1.0,
-      "grad_norm": 14.5,
+      "grad_norm": 14.75,
       "learning_rate": 0.0002,
       "loss": 4.256216526031494,
       "mean_token_accuracy": 0.5051393285393715,
@@ -20,12 +20,12 @@
       "step": 1
     },
     {
-      "entropy": 0.9406891912221909,
+      "entropy": 0.9380150139331818,
       "epoch": 2.0,
-      "grad_norm": 5.625,
+      "grad_norm": 5.78125,
       "learning_rate": 0.00013333333333333334,
-      "loss": 2.7436258792877197,
-      "mean_token_accuracy": 0.6172309368848801,
+      "loss": 2.726299524307251,
+      "mean_token_accuracy": 0.618368610739708,
       "num_tokens": 4670.0,
       "step": 2
     }

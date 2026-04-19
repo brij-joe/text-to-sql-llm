@@ -14,6 +14,7 @@ from trl import SFTTrainer, SFTConfig
 # 1. Configuration
 load_dotenv()
 hf_token = os.environ.get("HF_TOKEN") # Note: Ensure your .env has HF_TOKEN=...
+print(f"HF_TOKEN: {hf_token})
 model_id = "google/gemma-3-1b-it"
 dataset_path = "sql_tuning_data.jsonl"
 
