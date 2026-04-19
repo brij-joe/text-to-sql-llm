@@ -1,187 +1,215 @@
-# 🧠 Prompt Tuning for Text-to-SQL (Schema-Aware)
+# 🧠 Text-to-SQL with Prompt Tuning (PEFT + LoRA + Gemma)
 
-This project demonstrates how to build a **Text-to-SQL system using Prompt Tuning (PEFT)** on top of an LLM.
-The model is trained to generate SQL queries from natural language questions, conditioned on the **database schema**.
+Convert natural language into SQL queries using parameter-efficient fine-tuning (PEFT) with LoRA on top of a lightweight LLM.
+
+This project demonstrates how to:
+
+* Fine-tune a model using **instruction-style SQL datasets**
+* Use **QLoRA (4-bit quantization)** for efficient training
+* Perform **inference with trained adapters**
+* Build a scalable **Text → SQL pipeline**
 
 ---
 
-## 🚀 Key Features
+## 🚀 Overview
 
-* ⚡ **Parameter-Efficient Fine-Tuning (PEFT)** using Prompt Tuning
-* 🧩 **Schema-aware training** (critical for Text-to-SQL tasks)
-* 🗄️ Uses **Spider dataset** for supervised training
-* 🧪 Clean separation of:
+Traditional SQL generation systems rely on rules or templates. This project uses **Generative AI** to translate human language into SQL queries using a fine-tuned LLM.
 
-  * Trainer (Singleton)
-  * Inference Engine
-  * Config
-* 🎯 Optimized for **low GPU memory usage**
-* 🔁 Gradient accumulation + AMP support
+### 🔁 Workflow
+
+```
+Raw Schema + Question → Prompt Formatting → Fine-Tuned LLM → SQL Query
+```
 
 ---
 
 ## 📂 Project Structure
 
 ```
-src/
-├── config/
-│   └── training_config.py
-├── trainer/
-│   └── prompt_tuning_trainer.py
-├── inference/
-│   └── inference_engine.py
-└── main.py
+.
+├── model_peft_training.py     # Training script (LoRA + QLoRA)
+├── model_peft_inference.py    # Inference script (SQL generation)
+├── sql_tuning_data.py         # Dataset generation script
+├── sql_tuning_data.jsonl      # Final training dataset
+├── final_sql_adapter/         # Saved LoRA adapter (output)
+└── README.md
 ```
 
 ---
 
-## 🧠 How It Works
+## 🧩 Dataset Preparation
 
-### 1. Prompt Tuning
+Dataset is generated using structured schema + question + SQL answer format.
 
-Instead of fine-tuning the full model, we:
+* Script: 
+* Output: `sql_tuning_data.jsonl`
 
-* Freeze base model weights
-* Train only **virtual prompt embeddings**
+### Example Training Entry
 
-This drastically reduces:
-
-* GPU usage
-* Training time
-
----
-
-### 2. Schema-Aware Learning (Important 🔥)
-
-The model is trained with schema injected into the prompt:
-
-```
-Schema:
-customers(id, name, city)
-orders(id, customer_id, amount)
-
-Question: Show top 5 customers by order
-SQL:
+```json
+{
+  "messages": [
+    {"role": "system", "content": "You are a SQL expert."},
+    {"role": "user", "content": "Schema: student(...)\nQuestion: List students older than 18"},
+    {"role": "assistant", "content": "SELECT * FROM student WHERE age > 18;"}
+  ]
+}
 ```
 
-This enables:
-
-* Better table/column grounding
-* Higher SQL accuracy
-
 ---
 
-### 3. Label Masking (Critical)
+## 🏋️ Model Training (PEFT + LoRA)
 
-Only the SQL part is learned:
-This ensures the model:
-* Doesn’t memorize prompts
-* Learns actual SQL generation
+Training script: 
 
----
+### Key Features
 
-## 📊 Dataset
+* ✅ Base Model: `google/gemma-3-1b-it`
+* ✅ 4-bit Quantization (QLoRA)
+* ✅ LoRA applied to all linear layers
+* ✅ Efficient training with TRL `SFTTrainer`
 
-We use the **Spider dataset**, a benchmark for Text-to-SQL.
+### ⚙️ Training Config Highlights
 
-* Natural language questions
-* SQL queries
-* Multiple database schemas
+```python
+r=16
+lora_alpha=32
+lora_dropout=0.05
+learning_rate=2e-4
+batch_size=4
+epochs=3
+```
 
-### ⚠️ Important
-
-Schema is **NOT present in train split directly**
-It is loaded separately and joined via `db_id`.
-
----
-
-## ⚙️ Installation
-
-### 1. Create virtual environment
+### ▶️ Run Training
 
 ```bash
-uv venv
-```
-
-### 2. Install dependencies
-
-```bash
+uv venv .venv
 uv sync
+python model_peft_training.py
 ```
+
+### 📌 Output
+
+```
+./final_sql_adapter/
+```
+
+This contains only **delta weights**, not the full model.
 
 ---
 
-## ▶️ Run Training
+## 🔍 Inference (Generate SQL)
+
+Inference script: 
+
+### Steps
+
+1. Load base model
+2. Load LoRA adapter
+3. Provide prompt (schema + question)
+4. Generate SQL
+
+### ▶️ Run Inference
 
 ```bash
-uv run python src/main.py
+python model_peft_inference.py
 ```
 
----
-
-## 💡 Example Output
+### 🧪 Example
 
 **Input:**
 
 ```
-Show top 5 customers by order
+Table: employees, Columns: id, name, salary  
+Query: Show me the names of employees earning over 50000
 ```
 
 **Output:**
 
 ```sql
-SELECT customer_name, COUNT(*) 
-FROM orders 
-GROUP BY customer_name 
-ORDER BY COUNT(*) DESC 
-LIMIT 5;
+SELECT name FROM employees WHERE salary > 50000;
 ```
+
+---
+
+## ⚡ Key Concepts
+
+### 🔹 PEFT (Parameter Efficient Fine-Tuning)
+
+Only trains a small subset of parameters → faster + cheaper
+
+### 🔹 LoRA (Low-Rank Adaptation)
+
+Injects trainable rank decomposition into transformer layers
+
+### 🔹 QLoRA
+
+Combines:
+
+* 4-bit quantization
+* LoRA adapters
+  → Enables training on consumer GPUs
+
+---
+
+## 🛠️ Tech Stack
+
+* 🤗 Transformers
+* 🤗 Datasets
+* TRL (SFTTrainer)
+* PEFT (LoRA)
+* PyTorch
+* BitsAndBytes (4-bit quantization)
+
+---
+
+## 📊 Improvements You Can Add
+
+* ✅ Schema linking (table relationships awareness)
+* ✅ Multi-table join reasoning
+* ✅ Execution validation (SQL correctness check)
+* ✅ RAG for schema retrieval
+* ✅ Fine-tuning with real enterprise datasets
 
 ---
 
 ## ⚠️ Known Limitations
 
-* Prompt tuning struggles with:
-
-  * Very large schemas
-  * Complex multi-join queries
-* Requires careful prompt formatting
-* Performance depends heavily on schema representation
+* Model may hallucinate columns/tables if schema is unclear
+* Complex nested queries may require more training data
+* Performance depends heavily on prompt format consistency
 
 ---
 
-## 🛠️ Improvements (Next Steps)
+## 💡 Tips
 
-* 🔄 Switch to **QLoRA** for better performance
-* 📈 Add evaluation (execution accuracy)
-* 🧪 Integrate with real database (MCP pipeline)
-* 🧠 Schema compression / pruning
-* 💾 Model checkpointing
+* Keep **prompt format consistent** between training and inference
+* Use **low temperature (0.1)** for structured outputs like SQL
+* Add more **edge-case queries** to improve robustness
 
 ---
 
-## 🧠 Tech Stack
+## 📌 Future Enhancements
 
-* PyTorch
-* Hugging Face Transformers
-* PEFT (Prompt Tuning)
-* Datasets (Spider)
-* AMP (Mixed Precision)
-
----
-
-## 🙌 Acknowledgements
-
-* Spider Dataset (Text-to-SQL benchmark)
-* Hugging Face ecosystem
-* PEFT library
+* Deploy as API (FastAPI / Flask)
+* Integrate with Databricks SQL warehouse
+* Add UI for conversational querying
+* Implement evaluation metrics (execution accuracy)
 
 ---
 
-## 📌 Summary
+## 🤝 Contributing
 
-This project shows how to build a **lightweight, schema-aware Text-to-SQL system** using prompt tuning—making LLMs practical without expensive fine-tuning.
+Feel free to fork and enhance:
+
+* Better datasets
+* Optimized prompts
+* Larger models (Gemma 7B / LLaMA)
 
 ---
 
-⭐ If you found this useful, consider starring the repo!
+## 📜 License
+
+MIT License
+
+---
