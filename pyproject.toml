@@ -1,4 +1,5 @@
 [project]
+<<<<<<< HEAD
 name = "prompt-tuning"
 version = "0.1.0"
 description = "Prompt tuning with PEFT"
@@ -28,3 +29,18 @@ url = "https://download.pytorch.org/whl/cu121"
 torch = { index = "pytorch-cu121" }
 torchvision = { index = "pytorch-cu121" }
 torchaudio = { index = "pytorch-cu121" }
+=======
+name = "text-to-sql"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bitsandbytes>=0.49.2",
+    "datasets>=4.8.4",
+    "peft>=0.19.1",
+    "python-dotenv>=1.2.2",
+    "transformers>=5.5.4",
+    "trl>=1.2.0",
+]
+>>>>>>> 179a035 (Initial commit)
