@@ -207,5 +207,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-final_sql_adapter
-sql_model_results
+final_sql_adapter/
+sql_model_results/
